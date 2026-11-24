@@ -112,11 +112,17 @@ brew install llvm lld cmake ninja makensis xwin
 git clone --depth 1 --branch 31.0.0 https://github.com/obsproject/obs-studio.git .deps/obs-studio
 # Qt6 oficial de obs-deps 2024-09-12 (windows-deps-qt6-…-x64.zip → .deps/qt6-win)
 # SDK de Windows: xwin --accept-license --arch x86_64 splat --output .deps/xwin
+# macOS: obs-deps 2024-09-12 macos-deps-qt6-…-universal.tar.xz → .deps/qt6-mac
+#        y macos-deps-…-universal.tar.xz → .deps/deps-mac (simde); OBS.app en /Applications
 ```
 
 - Windows (DLL + instalador + ZIP): `scripts/build-windows.sh` → `dist/` (`tools-scenes.dll`).
-- macOS (para probar con el OBS local): ver `CMakeLists.txt` (sección APPLE);
-  `-DSCENE_PREVIO_DEBUG=ON` agrega mediciones y captura de diagnóstico.
+- macOS (plugin universal + instalador `.pkg` + ZIP): `scripts/build-macos.sh` → `dist/`.
+  Genera stubs `.tbd` de libobs y obs-frontend-api para arm64 y x86_64, así que compila el
+  binario universal aunque el OBS.app local sea de una sola arquitectura. El `.pkg` instala en
+  `~/Library/Application Support/obs-studio/plugins` como el usuario (sin contraseña) y quita la
+  versión anterior (`installer/macos/`). El plugin queda con firma ad-hoc (sin notarizar).
+- Pruebas locales en macOS: `-DSCENE_PREVIO_DEBUG=ON` agrega mediciones y captura de diagnóstico.
 
 El plugin no usa `moc` (sin `Q_OBJECT`), por eso se compila de forma cruzada con
 clang-cl. Si agrega llamadas nuevas a la API de OBS, regenere `cmake/windows/*.def`

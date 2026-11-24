@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Tools Scenes @VERSION@ para OBS Studio</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="license.txt" mime-type="text/plain"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <!-- OBS en macOS carga los plugins desde la carpeta del usuario:
+         ~/Library/Application Support/obs-studio/plugins -->
+    <domains enable_anywhere="false" enable_currentUserHome="true" enable_localSystem="false"/>
+    <options customize="never" require-scripts="false" hostArchitectures="x86_64,arm64"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="12.0"/>
+        </allowed-os-versions>
+    </volume-check>
+    <choices-outline>
+        <line choice="default">
+            <line choice="io.github.japalacioo.tools-scenes"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="io.github.japalacioo.tools-scenes" visible="false">
+        <pkg-ref id="io.github.japalacioo.tools-scenes"/>
+    </choice>
+    <pkg-ref id="io.github.japalacioo.tools-scenes" version="@VERSION@" onConclusion="none">tools-scenes.pkg</pkg-ref>
+</installer-gui-script>

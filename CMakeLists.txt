@@ -137,13 +137,25 @@ elseif(APPLE)
     "-F${QT_DIR}/lib"
     "SHELL:-iframework ${QT_DIR}/lib"
     -Wall -Wno-unused-parameter)
+  # OBS_MAC_STUBS: carpeta con stubs .tbd de libobs y obs-frontend-api para
+  # arm64 + x86_64 (los genera scripts/build-macos.sh). Permite compilar un
+  # binario universal aunque el OBS.app local sea de una sola arquitectura.
+  set(OBS_MAC_STUBS "" CACHE PATH "Stubs .tbd de libobs/obs-frontend-api")
+  if(OBS_MAC_STUBS)
+    set(OBS_LIB_F "${OBS_MAC_STUBS}")
+    set(OBS_FRONTEND_LIB "${OBS_MAC_STUBS}/obs-frontend-api.tbd")
+  else()
+    set(OBS_LIB_F "${FW}")
+    set(OBS_FRONTEND_LIB "${FW}/obs-frontend-api.dylib")
+  endif()
   target_link_options(tools-scenes PRIVATE
+    "-F${OBS_LIB_F}"
     "-F${FW}"
     "SHELL:-framework libobs"
     "SHELL:-framework QtCore"
     "SHELL:-framework QtGui"
     "SHELL:-framework QtWidgets"
-    "${FW}/obs-frontend-api.dylib")
+    "${OBS_FRONTEND_LIB}")
 
   file(GLOB_RECURSE DATA_FILES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/data" "${CMAKE_CURRENT_SOURCE_DIR}/data/*")
   foreach(f ${DATA_FILES})
