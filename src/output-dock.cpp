@@ -17,6 +17,7 @@
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollArea>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
@@ -56,7 +57,14 @@ OutputDock::OutputDock(QWidget *parent) : QWidget(parent)
 	auto *screenRow = new QHBoxLayout();
 	screenRow->addWidget(new QLabel(T("Clean.Screen"), mon));
 	screenCombo = new QComboBox(mon);
+	/* Que el combo pueda encogerse: el panel suele ser estrecho. */
+	screenCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+	screenCombo->setMinimumContentsLength(8);
 	screenRow->addWidget(screenCombo, 1);
+	auto *identifyButton = new QPushButton(T("Clean.Identify"), mon);
+	identifyButton->setToolTip(T("Clean.IdentifyTip"));
+	connect(identifyButton, &QPushButton::clicked, this, [this]() { IdentifyScreens(); });
+	screenRow->addWidget(identifyButton);
 	monLayout->addLayout(screenRow);
 	auto *monLayerRow = new QHBoxLayout();
 	monLayerRow->addWidget(new QLabel(T("Clean.IncludeLayers"), mon));
@@ -130,10 +138,12 @@ OutputDock::OutputDock(QWidget *parent) : QWidget(parent)
 			o.ShowMonitor(screen);
 			savedScreen = screenCombo->currentData().toString();
 			savedScreenIndex = screenCombo->currentIndex();
-			SaveSettings();
+			monitorWanted = true;
 		} else {
 			o.HideMonitor();
+			monitorWanted = false;
 		}
+		SaveSettings();
 		UpdateState();
 	});
 	connect(screenCombo, qOverload<int>(&QComboBox::activated), this, [this](int) {
@@ -149,10 +159,12 @@ OutputDock::OutputDock(QWidget *parent) : QWidget(parent)
 			QString error;
 			const QString name = ndiName->text().trimmed().isEmpty() ? QString("OBS Limpio")
 										    : ndiName->text().trimmed();
-			if (!o.StartNdi(name, error))
+			ndiWanted = o.StartNdi(name, error);
+			if (!ndiWanted)
 				QMessageBox::warning(this, T("Clean.Ndi"), error);
 		} else {
 			o.StopNdi();
+			ndiWanted = false;
 		}
 		SaveSettings();
 		UpdateState();
@@ -172,13 +184,57 @@ OutputDock::OutputDock(QWidget *parent) : QWidget(parent)
 		}
 	});
 
-	out.onMonitorClosed = [this]() { UpdateState(); };
+	/* Cerrado por el usuario (Esc) = apagado a propósito. */
+	out.onMonitorClosed = [this]() {
+		monitorWanted = false;
+		SaveSettings();
+		UpdateState();
+	};
 	UpdateState();
+
+	obs_frontend_add_event_callback(FrontendEvent, this);
 }
 
 OutputDock::~OutputDock()
 {
+	CloseIdentify();
+	obs_frontend_remove_event_callback(FrontendEvent, this);
 	CleanOutputs::Get().onMonitorClosed = nullptr;
+}
+
+void OutputDock::FrontendEvent(enum obs_frontend_event event, void *data)
+{
+	if (event != OBS_FRONTEND_EVENT_FINISHED_LOADING)
+		return;
+	auto *self = static_cast<OutputDock *>(data);
+	/* Después de que el motor asigne los canales (mismo evento, otro aviso). */
+	QTimer::singleShot(0, self, [self]() { self->RestoreOutputs(); });
+}
+
+void OutputDock::RestoreOutputs()
+{
+	CleanOutputs &o = CleanOutputs::Get();
+	if (monitorWanted && !o.MonitorActive()) {
+		/* Solo en la pantalla guardada: si no está conectada no se usa otra
+		 * (podría tapar OBS). */
+		QScreen *screen = screenCombo->currentData().toString() == savedScreen ? SelectedScreen() : nullptr;
+		if (screen) {
+			o.ShowMonitor(screen);
+			blog(LOG_INFO, "[tools-scenes] salida limpia al monitor reanudada: %s",
+			     screen->name().toUtf8().constData());
+		} else {
+			blog(LOG_WARNING, "[tools-scenes] monitor de salida limpia no conectado: %s",
+			     savedScreen.toUtf8().constData());
+		}
+	}
+	if (ndiWanted && !o.NdiActive()) {
+		QString error;
+		const QString name = ndiName->text().trimmed().isEmpty() ? QString("OBS Limpio") : ndiName->text().trimmed();
+		if (!o.StartNdi(name, error))
+			blog(LOG_WARNING, "[tools-scenes] no se pudo reanudar la salida NDI limpia: %s",
+			     error.toUtf8().constData());
+	}
+	UpdateState();
 }
 
 void OutputDock::RefreshScreens()
@@ -204,6 +260,49 @@ void OutputDock::RefreshScreens()
 		select = 1; /* por defecto, la segunda pantalla */
 	if (select >= 0)
 		screenCombo->setCurrentIndex(select);
+}
+
+void OutputDock::CloseIdentify()
+{
+	for (const QPointer<QWidget> &w : identifyWindows)
+		if (w)
+			w->close();
+	identifyWindows.clear();
+}
+
+void OutputDock::IdentifyScreens()
+{
+	/* Número grande en cada pantalla (el mismo del combo) durante 3 s; la
+	 * elegida en rojo. */
+	CloseIdentify();
+	const QList<QScreen *> screens = QGuiApplication::screens();
+	QScreen *selected = SelectedScreen();
+	QScreen *own = window() ? window()->screen() : nullptr;
+	for (int i = 0; i < screens.size(); i++) {
+		QScreen *s = screens[i];
+		auto *label = new QLabel(nullptr, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint |
+							  Qt::WindowDoesNotAcceptFocus);
+		label->setAttribute(Qt::WA_DeleteOnClose);
+		label->setAttribute(Qt::WA_ShowWithoutActivating);
+		label->setAlignment(Qt::AlignCenter);
+		QString detail = s->name().toHtmlEscaped();
+		if (s == own)
+			detail += "<br>" + T("Clean.IdentifyObs").toHtmlEscaped();
+		label->setText(QString("<div style='font-size:150px;font-weight:bold;'>%1</div>"
+				       "<div style='font-size:20px;'>%2</div>")
+				       .arg(i + 1)
+				       .arg(detail));
+		label->setStyleSheet(s == selected ? "QLabel{background:#c81e1e;color:white;border:6px solid white;}"
+						   : "QLabel{background:#202020;color:white;border:6px solid #888;}");
+		/* La pantalla se fija antes de crear la ventana (ver ProjectorWindow). */
+		label->setScreen(s);
+		const QRect g = s->geometry();
+		const QSize size(360, 320);
+		label->setGeometry(QRect(g.center() - QPoint(size.width() / 2, size.height() / 2), size));
+		label->show();
+		QTimer::singleShot(3000, label, &QWidget::close);
+		identifyWindows.emplace_back(label);
+	}
 }
 
 QScreen *OutputDock::SelectedScreen() const
@@ -253,6 +352,8 @@ void OutputDock::LoadSettings()
 	savedScreen = QString::fromUtf8(obs_data_get_string(data, "monitor_screen"));
 	obs_data_set_default_int(data, "monitor_screen_index", -1);
 	savedScreenIndex = (int)obs_data_get_int(data, "monitor_screen_index");
+	monitorWanted = obs_data_get_bool(data, "monitor_active");
+	ndiWanted = obs_data_get_bool(data, "ndi_active");
 	const char *name = obs_data_get_string(data, "ndi_name");
 	if (name && *name)
 		ndiName->setText(QString::fromUtf8(name));
@@ -277,6 +378,8 @@ void OutputDock::SaveSettings() const
 	obs_data_t *data = obs_data_create();
 	obs_data_set_string(data, "monitor_screen", savedScreen.toUtf8().constData());
 	obs_data_set_int(data, "monitor_screen_index", savedScreenIndex);
+	obs_data_set_bool(data, "monitor_active", monitorWanted);
+	obs_data_set_bool(data, "ndi_active", ndiWanted);
 	obs_data_set_string(data, "ndi_name", ndiName->text().toUtf8().constData());
 	for (int i = 0; i < kLayerCount; i++) {
 		obs_data_set_bool(data, ("monitor_layer_" + std::to_string(i)).c_str(),

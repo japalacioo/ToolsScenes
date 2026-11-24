@@ -13,7 +13,10 @@
 #include <QAction>
 #include <QDir>
 #include <QFileDialog>
+#include <QDateTime>
+#include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QFileSystemWatcher>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -23,6 +26,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollArea>
 #include <QSlider>
 #include <QSpinBox>
@@ -36,6 +40,7 @@
 #endif
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -658,7 +663,13 @@ void MediaDock::OpenEditor(const QString &key)
 	OBSSourceAutoRelease src = SourceForKey(key, false);
 	bool activate = false;
 	obs_source_t *target = src;
-	if (!src) {
+	/* Un video que no está al aire (o que ya terminó) mide 0x0 y el editor
+	 * caería al tamaño del lienzo (16:9): se muestra una copia privada que sí
+	 * carga y da el tamaño real del contenido. Los cambios se aplican igual a
+	 * la fuente pública. */
+	const bool needsTemp = src && (key.startsWith("f:") || key.startsWith("d:")) &&
+			       (!obs_source_get_width(src) || !obs_source_get_height(src));
+	if (!src || needsTemp) {
 		/* Aún no existe en OBS: fuente privada temporal (sin audio en la salida). */
 		if (previewTempKey != key) {
 			editor->Detach();
@@ -891,6 +902,95 @@ void MediaDock::ShowCardMenu(const QString &key, const QPoint &globalPos)
 /* ------------------------------------------------------------------------ */
 /* Fuentes                                                                   */
 
+/* Tamaño en puntos de la página de un PDF (primer /MediaBox o /CropBox), sin
+ * bibliotecas: así la fuente toma la forma de la página y no la del lienzo.
+ * Si los objetos están comprimidos (ObjStm) se descomprimen. Vacío si no se
+ * encuentra. */
+static QSizeF PdfPageSize(const QString &path)
+{
+	static QHash<QString, QPair<QDateTime, QSizeF>> cache;
+	const QDateTime modified = QFileInfo(path).lastModified();
+	auto cached = cache.constFind(path);
+	if (cached != cache.constEnd() && cached->first == modified)
+		return cached->second;
+
+	static const QRegularExpression boxRe(
+		R"(/(?:MediaBox|CropBox)\s*\[\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*\])");
+	static const QRegularExpression rotateRe(R"(/Rotate\s+(-?\d+))");
+	QSizeF result;
+	auto scan = [&](const QByteArray &data) {
+		const QString text = QString::fromLatin1(data);
+		const QRegularExpressionMatch m = boxRe.match(text);
+		if (!m.hasMatch())
+			return false;
+		const double w = std::abs(m.captured(3).toDouble() - m.captured(1).toDouble());
+		const double h = std::abs(m.captured(4).toDouble() - m.captured(2).toDouble());
+		if (w <= 0.0 || h <= 0.0)
+			return false;
+		/* /Rotate del mismo objeto página (cerca del /MediaBox). */
+		const qsizetype from = std::max<qsizetype>(0, m.capturedStart() - 2000);
+		const QRegularExpressionMatch r = rotateRe.match(text.mid(from, 4000 + m.capturedLength()));
+		const int rot = r.hasMatch() ? ((r.captured(1).toInt() % 360) + 360) % 360 : 0;
+		result = (rot == 90 || rot == 270) ? QSizeF(h, w) : QSizeF(w, h);
+		return true;
+	};
+
+	QFile file(path);
+	if (file.open(QIODevice::ReadOnly)) {
+		/* Por bloques: en PDF grandes la primera página suele estar al inicio. */
+		const qint64 chunk = qint64(4) << 20;
+		QByteArray tail;
+		bool found = false;
+		while (!found && !file.atEnd()) {
+			const QByteArray block = tail + file.read(chunk);
+			found = scan(block);
+			tail = block.right(512);
+		}
+		if (!found && file.size() <= (qint64(128) << 20) && file.seek(0)) {
+			const QByteArray all = file.readAll();
+			qsizetype pos = 0;
+			while (!found && (pos = all.indexOf("/ObjStm", pos)) >= 0) {
+				qsizetype start = all.indexOf("stream", pos);
+				if (start < 0)
+					break;
+				start += 6;
+				if (start < all.size() && all[start] == '\r')
+					start++;
+				if (start < all.size() && all[start] == '\n')
+					start++;
+				const qsizetype end = all.indexOf("endstream", start);
+				if (end < 0)
+					break;
+				/* qUncompress espera 4 bytes con el tamaño (solo una pista). */
+				const quint32 hint = (quint32)std::min<qsizetype>((end - start) * 8, qsizetype(64) << 20);
+				QByteArray z;
+				z.append((char)(hint >> 24)).append((char)(hint >> 16)).append((char)(hint >> 8)).append((char)hint);
+				z.append(all.constData() + start, end - start);
+				const QByteArray inflated = qUncompress(z);
+				found = !inflated.isEmpty() && scan(inflated);
+				pos = end;
+			}
+		}
+	}
+	cache.insert(path, qMakePair(modified, result));
+	return result;
+}
+
+/* Tamaño de la fuente de navegador de un PDF: la página ajustada al lienzo. */
+static void PdfSourceSize(const QString &path, uint32_t cw, uint32_t ch, uint32_t &w, uint32_t &h)
+{
+	w = cw;
+	h = ch;
+	const QSizeF page = PdfPageSize(path);
+	if (page.isEmpty() || !cw || !ch)
+		return;
+	const double a = page.width() / page.height();
+	if (a >= (double)cw / ch)
+		h = (uint32_t)std::max(2L, std::lround(cw / a));
+	else
+		w = (uint32_t)std::max(2L, std::lround(ch * a));
+}
+
 bool MediaDock::BuildFileSource(const QString &path, const char *&id, obs_data_t *s)
 {
 	const QString type = FileType(path);
@@ -925,8 +1025,10 @@ bool MediaDock::BuildFileSource(const QString &path, const char *&id, obs_data_t
 		bfree(viewer);
 		obs_data_set_bool(s, "is_local_file", false);
 		obs_data_set_string(s, "url", ToStd(url).c_str());
-		obs_data_set_int(s, "width", cw);
-		obs_data_set_int(s, "height", ch);
+		uint32_t pw, ph;
+		PdfSourceSize(path, cw, ch, pw, ph);
+		obs_data_set_int(s, "width", pw);
+		obs_data_set_int(s, "height", ph);
 		/* Se apaga cuando no está visible (ahorra recursos); el visor
 		 * recuerda la página. */
 		obs_data_set_bool(s, "shutdown", true);
@@ -936,13 +1038,32 @@ bool MediaDock::BuildFileSource(const QString &path, const char *&id, obs_data_t
 	return id && obs_source_get_display_name(id);
 }
 
+/* PDF creados antes (al tamaño del lienzo): llevarlos a la forma de la página. */
+void MediaDock::FitPdfSource(const QString &path, obs_source_t *src)
+{
+	uint32_t cw, ch, pw, ph;
+	CanvasSize(cw, ch);
+	PdfSourceSize(path, cw, ch, pw, ph);
+	OBSDataAutoRelease cur = obs_source_get_settings(src);
+	if ((uint32_t)obs_data_get_int(cur, "width") == pw && (uint32_t)obs_data_get_int(cur, "height") == ph)
+		return;
+	OBSDataAutoRelease upd = obs_data_create();
+	obs_data_set_int(upd, "width", pw);
+	obs_data_set_int(upd, "height", ph);
+	obs_source_update(src, upd);
+	blog(LOG_INFO, "[tools-scenes] PDF ajustado a la forma de la página: %ux%u", pw, ph);
+}
+
 obs_source_t *MediaDock::SourceForFile(const QString &path, bool create)
 {
 	auto it = fileSources.find(path);
 	if (it != fileSources.end()) {
 		obs_source_t *src = obs_get_source_by_uuid(it->second.c_str());
-		if (src)
+		if (src) {
+			if (FileType(path) == "pdf")
+				FitPdfSource(path, src);
 			return src;
+		}
 		fileSources.erase(it);
 	}
 	if (!create)
