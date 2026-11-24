@@ -77,9 +77,10 @@ void ProjectorWindow::ShowOn(QScreen *screen)
 {
 	if (!screen)
 		screen = QGuiApplication::primaryScreen();
-	(void)winId();
-	if (QWindow *w = windowHandle())
-		w->setScreen(screen);
+	/* La pantalla y la geometría se fijan ANTES de crear la ventana nativa.
+	 * Si se crea primero (winId) nace en la pantalla de OBS y, en Windows,
+	 * showFullScreen() la deja allí aunque luego se cambie de pantalla. */
+	setScreen(screen);
 	setGeometry(screen->geometry());
 #ifdef __APPLE__
 	/* En macOS showFullScreen crea un "espacio" aparte; una ventana sin marco
@@ -203,6 +204,7 @@ void ProjectorWindow::closeEvent(QCloseEvent *event)
 {
 	event->ignore();
 	hide();
-	if (onClosedByUser)
-		onClosedByUser();
+	/* Copia: el aviso puede borrar onClosedByUser mientras se ejecuta. */
+	if (auto cb = onClosedByUser)
+		cb();
 }

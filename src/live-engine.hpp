@@ -22,6 +22,7 @@
 #include <vector>
 
 class ProjectorWindow;
+class QScreen;
 
 constexpr int kLayerCount = 4;
 constexpr uint32_t kLayerChannelBase = 10;
@@ -144,7 +145,7 @@ public:
 	void CollectionCleanup();
 
 	/* Monitor */
-	bool ShowMonitor(const QString &screenName);
+	bool ShowMonitor(QScreen *screen);
 	void HideMonitor();
 	bool MonitorActive() const;
 	void SetMonitorLayer(int index, bool on);
@@ -164,6 +165,7 @@ private:
 	void EnsureView(Target &t);
 	void SyncTarget(Target &t);
 	void ReleaseView(Target &t);
+	void CloseProjectorWindow();
 
 	Target monitor;
 	Target ndi;

@@ -816,24 +816,24 @@ void CleanOutputs::Shutdown()
 
 /* ---- Monitor ---- */
 
-bool CleanOutputs::ShowMonitor(const QString &screenName)
+bool CleanOutputs::ShowMonitor(QScreen *screen)
 {
-	QScreen *screen = nullptr;
-	for (QScreen *s : QGuiApplication::screens())
-		if (s->name() == screenName)
-			screen = s;
 	if (!screen)
 		screen = QGuiApplication::primaryScreen();
+	if (!screen)
+		return false;
 
 	EnsureView(monitor);
-	if (!projector) {
-		projector = new ProjectorWindow(monitor.view);
-		projector->onClosedByUser = [this]() {
-			HideMonitor();
-			if (onMonitorClosed)
-				onMonitorClosed();
-		};
-	}
+	/* Una ventana nativa ya creada no se lleva de forma fiable a otra pantalla
+	 * (en Windows queda a pantalla completa donde se creó): para cambiar de
+	 * monitor se crea una ventana nueva directamente en el elegido. */
+	CloseProjectorWindow();
+	projector = new ProjectorWindow(monitor.view);
+	projector->onClosedByUser = [this]() {
+		HideMonitor();
+		if (onMonitorClosed)
+			onMonitorClosed();
+	};
 	uint32_t w, h;
 	GetCanvas(w, h);
 	projector->SetCanvasSize(w, h);
@@ -841,14 +841,22 @@ bool CleanOutputs::ShowMonitor(const QString &screenName)
 	return true;
 }
 
-void CleanOutputs::HideMonitor()
+void CleanOutputs::CloseProjectorWindow()
 {
 	if (!projector)
 		return;
+	projector->onClosedByUser = nullptr;
 	projector->DestroyDisplay();
 	projector->hide();
 	projector->deleteLater();
 	projector = nullptr;
+}
+
+void CleanOutputs::HideMonitor()
+{
+	if (!projector)
+		return;
+	CloseProjectorWindow();
 	/* Sin monitor la vista no se renderiza; se suelta para no mantener
 	 * referencias innecesarias. */
 	ReleaseView(monitor);

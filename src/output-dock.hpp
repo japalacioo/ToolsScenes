@@ -15,6 +15,7 @@ class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QScreen;
 
 class OutputDock : public QWidget {
 public:
@@ -23,6 +24,7 @@ public:
 
 private:
 	void RefreshScreens();
+	QScreen *SelectedScreen() const;
 	void UpdateState();
 	void LoadSettings();
 	void SaveSettings() const;
@@ -37,4 +39,5 @@ private:
 	QLabel *ndiStatus = nullptr;
 
 	QString savedScreen;
+	int savedScreenIndex = -1; /* desempata pantallas con el mismo nombre */
 };

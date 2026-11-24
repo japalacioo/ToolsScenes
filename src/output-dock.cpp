@@ -119,16 +119,17 @@ OutputDock::OutputDock(QWidget *parent) : QWidget(parent)
 	connect(monitorButton, &QPushButton::clicked, this, [this](bool on) {
 		CleanOutputs &o = CleanOutputs::Get();
 		if (on) {
-			const QString screen = screenCombo->currentData().toString();
+			QScreen *screen = SelectedScreen();
 			/* Avisar si es la misma pantalla de OBS. */
 			QScreen *own = window() ? window()->screen() : nullptr;
-			if (own && own->name() == screen &&
+			if (screen && own == screen &&
 			    QMessageBox::question(this, T("Clean.Monitor"), T("Clean.SameScreen")) != QMessageBox::Yes) {
 				monitorButton->setChecked(false);
 				return;
 			}
 			o.ShowMonitor(screen);
-			savedScreen = screen;
+			savedScreen = screenCombo->currentData().toString();
+			savedScreenIndex = screenCombo->currentIndex();
 			SaveSettings();
 		} else {
 			o.HideMonitor();
@@ -137,9 +138,10 @@ OutputDock::OutputDock(QWidget *parent) : QWidget(parent)
 	});
 	connect(screenCombo, qOverload<int>(&QComboBox::activated), this, [this](int) {
 		savedScreen = screenCombo->currentData().toString();
+		savedScreenIndex = screenCombo->currentIndex();
 		SaveSettings();
 		if (CleanOutputs::Get().MonitorActive())
-			CleanOutputs::Get().ShowMonitor(savedScreen);
+			CleanOutputs::Get().ShowMonitor(SelectedScreen());
 	});
 	connect(ndiButton, &QPushButton::clicked, this, [this](bool on) {
 		CleanOutputs &o = CleanOutputs::Get();
@@ -194,13 +196,29 @@ void OutputDock::RefreshScreens()
 					     .arg((int)(g.width() * dpr))
 					     .arg((int)(g.height() * dpr)),
 				     s->name());
-		if (s->name() == savedScreen)
+		/* Con nombres repetidos (monitores iguales) gana la posición guardada. */
+		if (s->name() == savedScreen && (select < 0 || i == savedScreenIndex))
 			select = i;
 	}
 	if (select < 0 && screens.size() > 1)
 		select = 1; /* por defecto, la segunda pantalla */
 	if (select >= 0)
 		screenCombo->setCurrentIndex(select);
+}
+
+QScreen *OutputDock::SelectedScreen() const
+{
+	/* El combo se llena en el orden de QGuiApplication::screens(): el índice
+	 * identifica la pantalla aunque dos monitores tengan el mismo nombre. */
+	const QList<QScreen *> screens = QGuiApplication::screens();
+	const int i = screenCombo->currentIndex();
+	const QString name = screenCombo->currentData().toString();
+	if (i >= 0 && i < screens.size() && screens[i]->name() == name)
+		return screens[i];
+	for (QScreen *s : screens)
+		if (s->name() == name)
+			return s;
+	return nullptr;
 }
 
 void OutputDock::UpdateState()
@@ -233,6 +251,8 @@ void OutputDock::LoadSettings()
 	if (!data)
 		return;
 	savedScreen = QString::fromUtf8(obs_data_get_string(data, "monitor_screen"));
+	obs_data_set_default_int(data, "monitor_screen_index", -1);
+	savedScreenIndex = (int)obs_data_get_int(data, "monitor_screen_index");
 	const char *name = obs_data_get_string(data, "ndi_name");
 	if (name && *name)
 		ndiName->setText(QString::fromUtf8(name));
@@ -256,6 +276,7 @@ void OutputDock::SaveSettings() const
 		return;
 	obs_data_t *data = obs_data_create();
 	obs_data_set_string(data, "monitor_screen", savedScreen.toUtf8().constData());
+	obs_data_set_int(data, "monitor_screen_index", savedScreenIndex);
 	obs_data_set_string(data, "ndi_name", ndiName->text().toUtf8().constData());
 	for (int i = 0; i < kLayerCount; i++) {
 		obs_data_set_bool(data, ("monitor_layer_" + std::to_string(i)).c_str(),
