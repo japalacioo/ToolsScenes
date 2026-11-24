@@ -1,15 +1,18 @@
 # Tools Scenes
 
-Plugin para **OBS Studio 31+** al estilo vMix, con tres paneles:
+Plugin para **OBS Studio 31+** en **Windows x64** y **macOS** (Apple Silicon e Intel), al estilo
+vMix, con tres paneles:
 
 - **Vista de Escenas**: vista previa en vivo de todas las escenas.
 - **Multimedia y Capas**: biblioteca de archivos y entradas, envío al aire sin crear escenas y 4 capas superpuestas.
 - **Salida Limpia**: Programa sin capas (o con las elegidas) hacia un monitor o por NDI.
 
+Descargue los instaladores desde [Releases](https://github.com/japalacioo/ToolsScenes/releases/latest).
+
 ## Instalación en Windows
 
 1. Cierre OBS Studio.
-2. Ejecute `dist/ToolsScenes-1.4.0-Windows-x64-Instalador.exe` (pide permisos de administrador).
+2. Ejecute `ToolsScenes-<versión>-Windows-x64-Instalador.exe` (pide permisos de administrador).
 3. Abra OBS y active los paneles en **Paneles (Docks)**: *Vista de Escenas*, *Multimedia y Capas* y *Salida Limpia*.
 4. Para NDI (entradas o salida) instale además **DistroAV** y el **NDI Runtime**.
 
@@ -23,8 +26,48 @@ También elimina la versión anterior del plugin (antes llamada ScenePrevio, car
 carguen dos copias. Los grupos, la biblioteca, las capas y los ajustes se conservan. Se desinstala
 desde *Configuración → Aplicaciones* ("Tools Scenes para OBS Studio").
 
-Instalación manual (OBS 33+): descomprima `ToolsScenes-1.4.0-Windows-x64-manual.zip` en
+Instalación manual (OBS 33+): descomprima `ToolsScenes-<versión>-Windows-x64-manual.zip` en
 `C:\ProgramData\obs-studio\plugins\` y borre la carpeta `scene-previo` si existe.
+
+## Instalación en Mac
+
+Requiere **macOS 12 o superior** y **OBS Studio 31+**. El plugin es universal: funciona en Mac con
+Apple Silicon (M1, M2, M3, M4…) y con Intel.
+
+1. Cierre OBS Studio.
+2. Abra `ToolsScenes-<versión>-macOS-Instalador.pkg` y siga los pasos. No pide contraseña de
+   administrador: se instala solo para su usuario.
+3. Abra OBS y active los paneles en el menú **Paneles**: *Vista de Escenas*, *Multimedia y Capas* y
+   *Salida Limpia*.
+4. Para NDI (entradas o salida) instale además **DistroAV** y el **NDI Runtime** para macOS.
+
+El instalador copia `tools-scenes.plugin` en `~/Library/Application Support/obs-studio/plugins/`,
+la carpeta desde la que OBS para Mac carga los plugins. También quita la versión anterior (antes
+llamada ScenePrevio, `scene-previo.plugin`); los grupos, la biblioteca, las capas y los ajustes se
+conservan.
+
+**Aviso de seguridad de macOS.** El instalador no está firmado ni notarizado por Apple. Si macOS
+dice que no puede abrirlo, haga **clic derecho → Abrir**, o vaya a *Configuración del Sistema →
+Privacidad y seguridad* y pulse **Abrir igualmente**.
+
+**Instalación manual.** Descomprima `ToolsScenes-<versión>-macOS-manual.zip` y copie
+`tools-scenes.plugin` a `~/Library/Application Support/obs-studio/plugins/` (en Finder:
+*Ir → Ir a la carpeta…*). Como viene de internet, quite la cuarentena antes de abrir OBS:
+
+```bash
+xattr -dr com.apple.quarantine ~/Library/Application\ Support/obs-studio/plugins/tools-scenes.plugin
+```
+
+**Desinstalar.** Cierre OBS y borre `tools-scenes.plugin` de
+`~/Library/Application Support/obs-studio/plugins/`. Los ajustes del plugin están en
+`~/Library/Application Support/obs-studio/plugin_config/tools-scenes/`.
+
+**Diferencias con Windows.**
+
+- *Salida Limpia → Monitor*: en Mac se abre como una ventana sin bordes del tamaño de la
+  pantalla (no como pantalla completa de macOS, que crearía un escritorio aparte). Esc la cierra.
+- Las miniaturas de las tarjetas: en Mac se generan para imágenes; los videos y PDF muestran su
+  tipo (en Windows usan las miniaturas del Explorador). El visor del editor sí muestra todo en vivo.
 
 ## Multimedia y Capas
 
