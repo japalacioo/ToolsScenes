@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(tools-scenes VERSION 1.3.0 LANGUAGES C CXX)
+project(tools-scenes VERSION 1.4.0 LANGUAGES C CXX)
 
 # ---------------------------------------------------------------------------
 # Tools Scenes: plugin de OBS Studio (31+) con vista previa de escenas tipo vMix.

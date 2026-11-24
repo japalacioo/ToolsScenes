@@ -9,7 +9,7 @@ Plugin para **OBS Studio 31+** al estilo vMix, con tres paneles:
 ## Instalación en Windows
 
 1. Cierre OBS Studio.
-2. Ejecute `dist/ToolsScenes-1.3.0-Windows-x64-Instalador.exe` (pide permisos de administrador).
+2. Ejecute `dist/ToolsScenes-1.4.0-Windows-x64-Instalador.exe` (pide permisos de administrador).
 3. Abra OBS y active los paneles en **Paneles (Docks)**: *Vista de Escenas*, *Multimedia y Capas* y *Salida Limpia*.
 4. Para NDI (entradas o salida) instale además **DistroAV** y el **NDI Runtime**.
 
@@ -23,7 +23,7 @@ También elimina la versión anterior del plugin (antes llamada ScenePrevio, car
 carguen dos copias. Los grupos, la biblioteca, las capas y los ajustes se conservan. Se desinstala
 desde *Configuración → Aplicaciones* ("Tools Scenes para OBS Studio").
 
-Instalación manual (OBS 33+): descomprima `ToolsScenes-1.3.0-Windows-x64-manual.zip` en
+Instalación manual (OBS 33+): descomprima `ToolsScenes-1.4.0-Windows-x64-manual.zip` en
 `C:\ProgramData\obs-studio\plugins\` y borre la carpeta `scene-previo` si existe.
 
 ## Multimedia y Capas
@@ -37,11 +37,14 @@ Instalación manual (OBS 33+): descomprima `ToolsScenes-1.3.0-Windows-x64-manual
   sin Modo Estudio).
 - **Editar posición y tamaño…** (botón del panel, clic derecho en la tarjeta, o al agregar un
   archivo o entrada) abre una **ventana aparte** con el resultado exacto y las herramientas de
-  transformación de OBS: mover; 8 asas de tamaño (Mayús en esquinas = sin proporción); asa
+  transformación de OBS: mover; 8 asas de tamaño (las esquinas y *Mantener proporción* usan la
+  proporción del contenido; Mayús en esquinas = libre); asa
   superior para **rotar** (Mayús = cada 15°); **Alt + asa = recortar**; flechas para mover 1 px
   (Mayús = 10 px); campos numéricos de posición, tamaño, rotación y recorte; Ajustar, Llenar,
   Original, Centrar, Girar ±90°, Voltear H/V y Restablecer. Se aplica en Programa (también con
   "Duplicar escena" del Modo Estudio), Vista previa y capas, en vivo si ya está al aire.
+  Toma el tamaño real del contenido (también de un video que no está al aire) y los PDF tienen
+  la forma de su página, no la del lienzo.
 - Controles del elemento: reproducir/pausar, reiniciar, bucle; en PDF, página anterior/siguiente
   (sin recargar; el visor recuerda la página).
 - Una carpeta con imágenes ofrece además una tarjeta de **presentación**.
@@ -56,8 +59,11 @@ Instalación manual (OBS 33+): descomprima `ToolsScenes-1.3.0-Windows-x64-manual
 ## Salida Limpia
 
 - **Monitor**: elija la pantalla y pulse *Enviar al monitor*; muestra Programa sin capas, salvo
-  las marcadas en *Incluir capas*. Esc o *Quitar del monitor* la cierra.
+  las marcadas en *Incluir capas*. Esc o *Quitar del monitor* la cierra. *Identificar* muestra
+  durante 3 s el número de cada pantalla (la elegida en rojo).
 - **NDI**: nombre (por defecto "OBS Limpio"), capas a incluir e *Iniciar salida NDI*.
+- Las salidas que estaban encendidas al cerrar OBS se reanudan solas al abrirlo (el monitor, solo
+  si la pantalla guardada está conectada).
   Requiere DistroAV. El audio es la mezcla principal de OBS.
 
 ## Vista de Escenas
