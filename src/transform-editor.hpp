@@ -35,10 +35,13 @@ public:
 	obs_source_t *Source() const { return current; }
 	ItemTransform Effective() const; /* caja efectiva (también si es "ajustar") */
 	void SourceSize(uint32_t &w, uint32_t &h) const;
+	/* Proporción del contenido visible (fuente menos recorte); 0 si no se conoce. */
+	double ContentAspect(const ItemTransform &t) const;
 	void DestroyDisplay();
 	void Shutdown();
 
 	std::function<void(const ItemTransform &t, bool final)> onChanged;
+	std::function<void()> onSourceSizeChanged; /* p. ej. un video que terminó de cargar */
 
 protected:
 	QPaintEngine *paintEngine() const override { return nullptr; }
@@ -77,6 +80,8 @@ private:
 	std::mutex overlayMutex;
 	ItemTransform overlay; /* copia para el hilo gráfico */
 	bool overlayValid = false;
+	uint32_t lastSourceW = 0, lastSourceH = 0;
+	mutable uint32_t knownW = 0, knownH = 0; /* último tamaño no nulo de la fuente */
 
 	ItemTransform transform;
 	Drag drag = Drag::None;
@@ -103,6 +108,7 @@ protected:
 
 private:
 	void SyncFields();
+	double LockedAspect() const;
 	void FromFields(bool final);
 	void Preset(int which);
 	void SetCrop(int l, int t, int r, int b);

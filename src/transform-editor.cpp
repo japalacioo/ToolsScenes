@@ -161,6 +161,24 @@ void TransformCanvas::SourceSize(uint32_t &w, uint32_t &h) const
 {
 	w = current ? obs_source_get_width(current) : 0;
 	h = current ? obs_source_get_height(current) : 0;
+	/* Un video que terminó (o se detuvo) vuelve a medir 0x0: se conserva el
+	 * último tamaño conocido para no perder la proporción del contenido. */
+	if (w && h) {
+		knownW = w;
+		knownH = h;
+	} else if (current) {
+		w = knownW;
+		h = knownH;
+	}
+}
+
+double TransformCanvas::ContentAspect(const ItemTransform &t) const
+{
+	uint32_t sw, sh;
+	SourceSize(sw, sh);
+	const double vw = (double)sw - t.cropL - t.cropR;
+	const double vh = (double)sh - t.cropT - t.cropB;
+	return (vw > 0.0 && vh > 0.0) ? vw / vh : 0.0;
 }
 
 ItemTransform TransformCanvas::Effective() const
@@ -174,9 +192,19 @@ ItemTransform TransformCanvas::Effective() const
 void TransformCanvas::Publish()
 {
 	const ItemTransform eff = Effective();
-	std::lock_guard<std::mutex> lock(overlayMutex);
-	overlay = eff;
-	overlayValid = current != nullptr;
+	{
+		std::lock_guard<std::mutex> lock(overlayMutex);
+		overlay = eff;
+		overlayValid = current != nullptr;
+	}
+	uint32_t sw, sh;
+	SourceSize(sw, sh);
+	if (sw != lastSourceW || sh != lastSourceH) {
+		lastSourceW = sw;
+		lastSourceH = sh;
+		if (onSourceSizeChanged)
+			onSourceSizeChanged();
+	}
 }
 
 void TransformCanvas::SetSource(obs_source_t *source, const ItemTransform &t, bool activate)
@@ -193,6 +221,7 @@ void TransformCanvas::SetSource(obs_source_t *source, const ItemTransform &t, bo
 		if (current)
 			obs_source_release(current);
 		current = source ? obs_source_get_ref(source) : nullptr;
+		knownW = knownH = 0;
 		if (current) {
 			obs_sceneitem_t *item = obs_scene_add(scene, current);
 			if (item)
@@ -401,11 +430,15 @@ void TransformCanvas::mouseMoveEvent(QMouseEvent *event)
 			if (dragHy == -1)
 				top = m.y();
 			double w = std::max(4.0, right - left), h = std::max(4.0, bottom - top);
-			/* Esquinas: proporción fija salvo con Mayús (como OBS). */
+			/* Esquinas: proporción DEL CONTENIDO salvo con Mayús (como OBS); así
+			 * una caja deformada recupera su forma al arrastrar una esquina. */
 			if (dragHx && dragHy && !shift && o.w > 0 && o.h > 0) {
-				const double k = std::max(w / o.w, h / o.h);
-				w = o.w * k;
-				h = o.h * k;
+				const double content = ContentAspect(o);
+				const double a = content > 0.0 ? content : o.w / o.h;
+				if (w / h > a)
+					h = w / a;
+				else
+					w = h * a;
 			}
 			if (dragHx == 1)
 				right = left + w;
@@ -715,7 +748,14 @@ TransformEditor::TransformEditor(QWidget *parent) : QDialog(parent, Qt::Window)
 
 	auto *quick = new QGroupBox(T("Editor.Quick"), this);
 	auto *grid = new QGridLayout(quick);
-	auto mkBtn = [this](const char *key) { return new QPushButton(T(key), this); };
+	auto mkBtn = [this](const char *key) {
+		auto *b = new QPushButton(T(key), this);
+		/* Sin "botón por defecto": Enter en un campo numérico no debe disparar
+		 * la última acción rápida pulsada (p. ej. Restablecer o Girar). */
+		b->setAutoDefault(false);
+		b->setDefault(false);
+		return b;
+	};
 	QPushButton *fit = mkBtn("Media.Fit"), *fill = mkBtn("Media.Fill"), *orig = mkBtn("Media.Original");
 	QPushButton *center = mkBtn("Editor.Center"), *rotL = mkBtn("Editor.RotL"), *rotR = mkBtn("Editor.RotR");
 	QPushButton *flipH = mkBtn("Editor.FlipH"), *flipV = mkBtn("Editor.FlipV"), *reset = mkBtn("Editor.Reset");
@@ -738,6 +778,7 @@ TransformEditor::TransformEditor(QWidget *parent) : QDialog(parent, Qt::Window)
 	root->addLayout(side);
 
 	/* Conexiones */
+	canvas->onSourceSizeChanged = [this]() { SyncFields(); };
 	canvas->onChanged = [this](const ItemTransform &t, bool final) {
 		SyncFields();
 		if (onChanged)
@@ -748,10 +789,10 @@ TransformEditor::TransformEditor(QWidget *parent) : QDialog(parent, Qt::Window)
 	connect(sizeW, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double v) {
 		if (syncing)
 			return;
-		const ItemTransform e = canvas->Effective();
-		if (lockAspect->isChecked() && e.w > 0) {
+		const double a = LockedAspect();
+		if (lockAspect->isChecked() && a > 0.0) {
 			syncing = true;
-			sizeH->setValue(v * e.h / e.w);
+			sizeH->setValue(v / a);
 			syncing = false;
 		}
 		FromFields(true);
@@ -759,10 +800,10 @@ TransformEditor::TransformEditor(QWidget *parent) : QDialog(parent, Qt::Window)
 	connect(sizeH, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double v) {
 		if (syncing)
 			return;
-		const ItemTransform e = canvas->Effective();
-		if (lockAspect->isChecked() && e.h > 0) {
+		const double a = LockedAspect();
+		if (lockAspect->isChecked() && a > 0.0) {
 			syncing = true;
-			sizeW->setValue(v * e.w / e.h);
+			sizeW->setValue(v * a);
 			syncing = false;
 		}
 		FromFields(true);
@@ -827,6 +868,16 @@ void TransformEditor::reject()
 	if (onClosed)
 		onClosed();
 	QDialog::reject(); /* oculta la ventana (se reutiliza la próxima vez) */
+}
+
+double TransformEditor::LockedAspect() const
+{
+	/* La proporción del contenido (no la de la caja, que pudo quedar deformada). */
+	const ItemTransform e = canvas->Effective();
+	const double content = canvas->ContentAspect(e);
+	if (content > 0.0)
+		return content;
+	return e.h > 0 ? e.w / e.h : 0.0;
 }
 
 void TransformEditor::SyncFields()

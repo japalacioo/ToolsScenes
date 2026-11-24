@@ -64,6 +64,7 @@ private:
 	/* Claves: "f:<ruta>" archivo, "d:<carpeta>" presentación, "i:<uuid>" entrada. */
 	obs_source_t *SourceForKey(const QString &key, bool create);   /* referencia nueva */
 	obs_source_t *SourceForFile(const QString &path, bool create);
+	void FitPdfSource(const QString &path, obs_source_t *src);
 	obs_source_t *SourceForFolderSlideshow(const QString &folder, bool create);
 	obs_source_t *CreateTempPreviewSource(const QString &key);      /* privada */
 	obs_source_t *ControlSource();                                  /* referencia nueva */

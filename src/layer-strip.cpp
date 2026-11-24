@@ -132,7 +132,8 @@ void LayerStrip::InjectIfStudioMode()
 		if (slider->property("class").toString() != "slider-tbar")
 			continue;
 		QWidget *column = slider->parentWidget();
-		if (!column || column->findChild<LayerStrip *>(kObjectName))
+		/* QWidget: LayerStrip no tiene Q_OBJECT (MSVC rechaza findChild<LayerStrip *>). */
+		if (!column || column->findChild<QWidget *>(kObjectName))
 			return;
 		auto *layout = qobject_cast<QBoxLayout *>(column->layout());
 		if (!layout)
