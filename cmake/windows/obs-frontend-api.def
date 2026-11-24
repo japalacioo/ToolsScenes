@@ -1,0 +1,20 @@
+LIBRARY obs-frontend-api.dll
+EXPORTS
+    obs_frontend_add_dock_by_id
+    obs_frontend_add_event_callback
+    obs_frontend_add_save_callback
+    obs_frontend_get_current_preview_scene
+    obs_frontend_get_current_profile_path
+    obs_frontend_get_current_scene
+    obs_frontend_get_current_scene_collection
+    obs_frontend_get_main_window
+    obs_frontend_get_scenes
+    obs_frontend_open_projector
+    obs_frontend_open_source_filters
+    obs_frontend_open_source_properties
+    obs_frontend_preview_program_mode_active
+    obs_frontend_remove_event_callback
+    obs_frontend_remove_save_callback
+    obs_frontend_save
+    obs_frontend_set_current_preview_scene
+    obs_frontend_set_current_scene

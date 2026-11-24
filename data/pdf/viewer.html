@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ScenePrevio PDF</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  body.bg { background: #000; }
+  #page { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); box-shadow: none; }
+  #msg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+         color: #fff; font: 32px sans-serif; text-align: center; }
+</style>
+<script src="pdf.min.js"></script>
+</head>
+<body>
+<canvas id="page"></canvas>
+<div id="msg"></div>
+<script>
+/* Visor de PDF para ScenePrevio. Parámetros: ?file=<url>&page=<n>&bg=black|transparent
+ * Cambio de página sin recargar: evento JS "scenePrevioPage" con {page: n}
+ * (enviado con el proc handler "javascript_event" de la fuente de navegador). */
+(function () {
+  var params = new URLSearchParams(location.search);
+  var fileUrl = params.get('file');
+  var storeKey = 'sp-page:' + fileUrl;
+  var current = Math.max(1, parseInt(params.get('page') || '1', 10) || 1);
+  /* La página se recuerda entre la vista previa y el en vivo, y aunque la
+   * fuente se apague cuando no está visible. */
+  try { var saved = parseInt(localStorage.getItem(storeKey) || '', 10); if (saved > 0) current = saved; } catch (e) {}
+  if ((params.get('bg') || 'black') === 'black') document.body.classList.add('bg');
+
+  var canvas = document.getElementById('page');
+  var ctx = canvas.getContext('2d');
+  var msg = document.getElementById('msg');
+  var pdfDoc = null, rendering = false, pending = null, task = null;
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+
+  function showMessage(text) { msg.textContent = text; msg.style.display = 'flex'; }
+
+  function render(num) {
+    if (!pdfDoc) return;
+    num = Math.min(Math.max(1, num), pdfDoc.numPages);
+    if (rendering) { pending = num; return; }
+    rendering = true;
+    current = num;
+    try { localStorage.setItem(storeKey, String(num)); } catch (e) {}
+    pdfDoc.getPage(num).then(function (page) {
+      var base = page.getViewport({ scale: 1 });
+      var scale = Math.min(window.innerWidth / base.width, window.innerHeight / base.height);
+      var vp = page.getViewport({ scale: scale });
+      canvas.width = Math.floor(vp.width);
+      canvas.height = Math.floor(vp.height);
+      task = page.render({ canvasContext: ctx, viewport: vp, background: 'rgb(255,255,255)' });
+      return task.promise;
+    }).catch(function (e) { showMessage('Error al mostrar la página: ' + e); })
+      .then(function () {
+        rendering = false;
+        if (pending !== null) { var p = pending; pending = null; render(p); }
+      });
+  }
+
+  window.addEventListener('scenePrevioPage', function (e) {
+    var d = e.detail || {};
+    if (typeof d.page === 'number') render(d.page);
+    else if (d.delta) render(current + d.delta);
+  });
+  window.addEventListener('resize', function () { render(current); });
+
+  if (!fileUrl) { showMessage('Sin archivo PDF'); return; }
+  pdfjsLib.getDocument({ url: fileUrl, isEvalSupported: false }).promise.then(function (doc) {
+    pdfDoc = doc;
+    render(current);
+  }).catch(function (e) { showMessage('No se pudo abrir el PDF:\n' + e); });
+})();
+</script>
+</body>
+</html>
