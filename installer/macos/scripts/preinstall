@@ -1,0 +1,14 @@
+#!/bin/sh
+# Tools Scenes: antes de instalar, quitar la versión anterior para que OBS no
+# cargue dos copias. $2 = carpeta de destino (~/Library/Application Support/obs-studio/plugins).
+DEST="$2"
+if [ -z "$DEST" ] || [ "$DEST" = "/" ]; then
+	DEST="$HOME/Library/Application Support/obs-studio/plugins"
+fi
+case "$DEST" in
+	*/obs-studio/plugins) ;;
+	*) exit 0 ;; # destino inesperado: no tocar nada
+esac
+rm -rf "$DEST/scene-previo.plugin" "$DEST/tools-scenes.plugin"
+mkdir -p "$DEST"
+exit 0
